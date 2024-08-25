@@ -2,15 +2,16 @@ import streamlit as st
 from dotenv import load_dotenv
 import os
 from pathlib import Path
+from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.memory import ConversationBufferMemory
-from openai import OpenAI
+import google.generativeai as genai
 import pandas as pd
 from htmlTemplates import css, bot_template, user_template, header_template
 
 load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Define base directory
 BASE_DIR = Path(__file__).resolve().parent
@@ -21,13 +22,6 @@ def load_data(file_path):
     data = data.dropna()
     texts = data['Combined'].tolist()
     return texts
-
-# Create vector store from text chunks
-#def create_vectorstore(chunks):
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vectorstore = FAISS.from_texts(texts=chunks, embedding=embeddings)
-    vectorstore.save_local(BASE_DIR / "HiwarBot")
-    return vectorstore
 
 # Load vector store from a file
 def load_vectorstore():
@@ -56,28 +50,35 @@ def handle_user_input(query, conversation):
     # Add the new user query to the memory
     memory.append({"role": "user", "content": query})
     
-    # Prepare the input for the model
-    #prompt = f"Generate a response based on the following context: {retrieved_answers} Query: {query}"
+    # Prepare the system message and user query
+    system_message = ("You are HiwarBot, an Islamic chatbot designed to help users learn about Islam. "
+                      "You should provide answers that are informative, respectful, and based on authentic Islamic teachings. "
+                      "Only respond to questions that are directly related to Islam, and do so in English only. "
+                      "If a query is unrelated to Islam or in a different language, politely inform the user that you can only answer questions about Islam in English. "
+                      "Make sure to clarify any terms or concepts that might be unfamiliar to non-Muslims. "
+                      "The context provided includes dialogue chats between an agent and a visitor. "
+                      "Use this context to inform your responses and maintain a conversational tone. "
+                      "If you cannot provide an answer based on the context, state: 'I'm sorry, I can't answer this question at the moment. Please consult a knowledgeable person or a reliable source for accurate information.'")
     
-    # Generate response using OpenAI's GPT-4 model
-    response = client.chat.completions.create(
-    model="gpt-4o-mini-2024-07-18",
-    messages=[
-        {"role": "system", "content": "You are HiwarBot, an Islamic chatbot designed to help users learn about Islam. "
-                                      "You should provide answers that are informative, respectful, and based on authentic Islamic teachings. "
-                                      "Only respond to questions that are directly related to Islam, and do so in English only. "
-                                      "If a query is unrelated to Islam or in a different language, politely inform the user that you can only answer questions about Islam in English. "
-                                      "Make sure to clarify any terms or concepts that might be unfamiliar to non-Muslims. "
-                                      "The context provided includes dialogue chats between an agent and a visitor. "
-                                      "Use this context to inform your responses and maintain a conversational tone."
-                                      "If you cannot provide an answer based on the context, state: 'I'm sorry, I can't answer this question at the moment. Please consult a knowledgeable person or a reliable source for accurate information.'"},
-        {"role": "user", "content": "Generate a response based on the following context: " + retrieved_answers + " Query: " + query}
-    ] + memory,
-    max_tokens=500, temperature=0.5
-)
+    user_query = f"Generate a response based on the following context: {retrieved_answers} Query: {query}"
 
+    # Create the model
+    generation_config = {
+      "temperature": 0.5,
+      "max_output_tokens": 500,
+    }
+    model = genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
 
-    assistant_message = response.choices[0].message.content
+    # Start a chat session
+    chat_session = model.start_chat(history=[])
+
+    # Send the system message
+    chat_session.send_message(system_message)
+
+    # Send the user query and get the response
+    response = chat_session.send_message(user_query)
+
+    assistant_message = response.text
     
     # Add the assistant's response to the memory
     memory.append({"role": "assistant", "content": assistant_message})
@@ -94,8 +95,6 @@ def main():
 
     # Load and process the text data
     if 'conversation' not in st.session_state:
-        #text_data = load_text_data(BASE_DIR / "data/combined_data.csv")
-        #text_chunks = split_text_into_chunks(text_data)
         vectorstore = load_vectorstore()
         st.session_state.conversation = get_conversation_chain(vectorstore)
 
@@ -103,7 +102,7 @@ def main():
         st.session_state.chat_history = []
 
     # Display header
-    st.markdown(header_template.replace("{{MSG}}", "Welcome to HiwarBot!"), unsafe_allow_html=True)
+    st.markdown(header_template.replace("{{MSG}}", "Welcome to HiwarBot! [gemini-1.5-flash]"), unsafe_allow_html=True)
 
     # Create a container for the chat messages
     chat_container = st.container()
@@ -125,7 +124,6 @@ def handle_input_change():
         response = handle_user_input(user_question, st.session_state.conversation)
         st.session_state.chat_history.extend(response)
         st.session_state.user_input = ""  # Clear the input box after submission
-            
 
 if __name__ == '__main__':
     main()
