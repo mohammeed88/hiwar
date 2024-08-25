@@ -4,14 +4,6 @@ python-dotenv
 streamlit
 openai
 faiss-cpu
-altair
-tiktoken
-# uncomment to use huggingface llms
-#huggingface-hub
-#transformers
-#bitsandbytes
-#accelerate
-
-# uncomment to use instructor embeddings
-#InstructorEmbedding
 sentence-transformers
+google-cloud-aiplatform
+google-cloud-logging
