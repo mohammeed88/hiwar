@@ -2,7 +2,6 @@ import streamlit as st
 from dotenv import load_dotenv
 import os
 from pathlib import Path
-from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.memory import ConversationBufferMemory
